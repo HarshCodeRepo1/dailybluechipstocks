@@ -1,0 +1,62 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: DailyBlueChipStocks protected GET /me API.
+
+Parameters:
+  CognitoUserPoolId:
+    Type: String
+    Default: us-east-1_gfVsnIELk
+
+  CognitoAppClientId:
+    Type: String
+    Default: 71osdnkvspv2fgoeirmm6fmee6
+
+  FrontendOrigin:
+    Type: String
+    Default: http://localhost:5173
+
+Resources:
+  DailyBlueChipApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins:
+          - !Ref FrontendOrigin
+        AllowHeaders:
+          - Authorization
+          - Content-Type
+        AllowMethods:
+          - GET
+          - OPTIONS
+      Auth:
+        DefaultAuthorizer: CognitoJwtAuthorizer
+        Authorizers:
+          CognitoJwtAuthorizer:
+            IdentitySource: $request.header.Authorization
+            JwtConfiguration:
+              issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPoolId}
+              audience:
+                - !Ref CognitoAppClientId
+
+  GetMeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs22.x
+      Architectures:
+        - x86_64
+      CodeUri: src/getMe/
+      Handler: index.handler
+      MemorySize: 128
+      Timeout: 5
+      Events:
+        GetMe:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref DailyBlueChipApi
+            Path: /me
+            Method: GET
+
+Outputs:
+  ApiUrl:
+    Description: Base URL for the protected DailyBlueChipStocks API.
+    Value: !Sub https://${DailyBlueChipApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}
