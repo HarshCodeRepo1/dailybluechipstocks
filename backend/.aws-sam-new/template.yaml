@@ -1,64 +1,59 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: DailyBlueChipStocks protected API with user preferences.
-
 Parameters:
   CognitoUserPoolId:
     Type: String
     Default: us-east-1_gfVsnIELk
-
   CognitoAppClientId:
     Type: String
     Default: 71osdnkvspv2fgoeirmm6fmee6
-
   FrontendOrigin:
     Type: String
     Default: http://localhost:5173
-
 Resources:
   DailyBlueChipApi:
     Type: AWS::Serverless::HttpApi
     Properties:
       CorsConfiguration:
         AllowOrigins:
-          - !Ref FrontendOrigin
+        - Ref: FrontendOrigin
         AllowHeaders:
-          - Authorization
-          - Content-Type
+        - Authorization
+        - Content-Type
         AllowMethods:
-          - GET
-          - PUT
-          - OPTIONS
+        - GET
+        - PUT
+        - OPTIONS
       Auth:
         DefaultAuthorizer: CognitoJwtAuthorizer
         Authorizers:
           CognitoJwtAuthorizer:
             IdentitySource: $request.header.Authorization
             JwtConfiguration:
-              issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPoolId}
+              issuer:
+                Fn::Sub: https://cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPoolId}
               audience:
-                - !Ref CognitoAppClientId
-
+              - Ref: CognitoAppClientId
   UserPreferencesTable:
     Type: AWS::DynamoDB::Table
     Properties:
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
-        - AttributeName: userId
-          AttributeType: S
+      - AttributeName: userId
+        AttributeType: S
       KeySchema:
-        - AttributeName: userId
-          KeyType: HASH
+      - AttributeName: userId
+        KeyType: HASH
       SSESpecification:
         SSEEnabled: true
-
   GetMeFunction:
     Type: AWS::Serverless::Function
     Properties:
       Runtime: nodejs22.x
       Architectures:
-        - x86_64
-      CodeUri: src/getMe/
+      - x86_64
+      CodeUri: GetMeFunction
       Handler: index.handler
       MemorySize: 128
       Timeout: 5
@@ -66,45 +61,53 @@ Resources:
         GetMe:
           Type: HttpApi
           Properties:
-            ApiId: !Ref DailyBlueChipApi
+            ApiId:
+              Ref: DailyBlueChipApi
             Path: /me
             Method: GET
-
+    Metadata:
+      SamResourceId: GetMeFunction
   PreferencesFunction:
     Type: AWS::Serverless::Function
     Properties:
       Runtime: nodejs22.x
       Architectures:
-        - x86_64
-      CodeUri: src/preferences/
+      - x86_64
+      CodeUri: PreferencesFunction
       Handler: index.handler
       MemorySize: 128
       Timeout: 5
       Environment:
         Variables:
-          USER_PREFERENCES_TABLE: !Ref UserPreferencesTable
+          USER_PREFERENCES_TABLE:
+            Ref: UserPreferencesTable
       Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref UserPreferencesTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: UserPreferencesTable
       Events:
         GetPreferences:
           Type: HttpApi
           Properties:
-            ApiId: !Ref DailyBlueChipApi
+            ApiId:
+              Ref: DailyBlueChipApi
             Path: /preferences
             Method: GET
         PutPreferences:
           Type: HttpApi
           Properties:
-            ApiId: !Ref DailyBlueChipApi
+            ApiId:
+              Ref: DailyBlueChipApi
             Path: /preferences
             Method: PUT
-
+    Metadata:
+      SamResourceId: PreferencesFunction
 Outputs:
   ApiUrl:
     Description: Base URL for the protected DailyBlueChipStocks API.
-    Value: !Sub https://${DailyBlueChipApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}
-
+    Value:
+      Fn::Sub: https://${DailyBlueChipApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}
   UserPreferencesTableName:
     Description: DynamoDB table used to store authenticated user preferences.
-    Value: !Ref UserPreferencesTable
+    Value:
+      Ref: UserPreferencesTable
