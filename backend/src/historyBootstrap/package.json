@@ -1,6 +1,6 @@
 {
-  "name": "dailybluechipstocks-market-ingest",
-  "version": "1.2.0",
+  "name": "dailybluechipstocks-history-bootstrap",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "dependencies": {
