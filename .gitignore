@@ -30,3 +30,15 @@ dist/
 !.env.example
 .aws-sam/
 *.log
+
+# AWS SAM build artifacts
+.aws-sam/
+.aws-sam-*/
+backend/.aws-sam/
+backend/.aws-sam-*/
+
+# Local Lambda test payloads/responses
+backend/payload.json
+backend/response.json
+backend/response*.json
+backend/response-bootstrap.json

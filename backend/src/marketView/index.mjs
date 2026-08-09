@@ -45,8 +45,26 @@ const STOCKS = {
 
 const DEFAULT_SYMBOLS = [
   "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN",
-  "META", "AVGO", "JPM", "V", "COST"
+  "META", "AVGO", "JPM", "V", "COST",
 ];
+
+const SIGNAL_SCORE = {
+  "1Y LOW": 100,
+  "6M LOW": 90,
+  "4M LOW": 80,
+  "3M LOW": 70,
+  "2M LOW": 60,
+  "1M LOW": 50,
+  "1W LOW": 40,
+  NORMAL: 0,
+  "1W HIGH": -40,
+  "1M HIGH": -50,
+  "2M HIGH": -60,
+  "3M HIGH": -70,
+  "4M HIGH": -80,
+  "6M HIGH": -90,
+  "1Y HIGH": -100,
+};
 
 function response(statusCode, body) {
   return {
@@ -63,22 +81,60 @@ function getUserId(event) {
 function chooseSymbols(preferences) {
   if (!preferences) return DEFAULT_SYMBOLS;
 
-  const selected = Array.isArray(preferences.stocks)
-    ? preferences.stocks.map((s) => String(s).toUpperCase())
+  const selectedStocks = Array.isArray(preferences.stocks)
+    ? preferences.stocks
+        .map((symbol) => String(symbol).trim().toUpperCase())
+        .filter(Boolean)
     : [];
 
-  const sectors = new Set(
+  const selectedSectors = new Set(
     Array.isArray(preferences.sectors) ? preferences.sectors : []
   );
 
   const sectorMatches = Object.entries(STOCKS)
-    .filter(([, meta]) => sectors.has(meta.sector))
+    .filter(([, meta]) => selectedSectors.has(meta.sector))
     .map(([symbol]) => symbol);
 
-  // Specific watchlist stocks come first; sector matches fill remaining slots.
-  return [...new Set([...selected, ...sectorMatches, ...DEFAULT_SYMBOLS])]
-    .filter((symbol) => STOCKS[symbol])
-    .slice(0, 10);
+  const candidates = [...new Set([...selectedStocks, ...sectorMatches])]
+    .filter((symbol) => STOCKS[symbol]);
+
+  return candidates.length ? candidates : DEFAULT_SYMBOLS;
+}
+
+function normalizeSignal(item) {
+  const signal = String(item.signal ?? "NORMAL").toUpperCase();
+  return Object.prototype.hasOwnProperty.call(SIGNAL_SCORE, signal)
+    ? signal
+    : "NORMAL";
+}
+
+function getTone(signal) {
+  if (signal.endsWith("LOW")) return "positive";
+  if (signal.endsWith("HIGH")) return "negative";
+  return "neutral";
+}
+
+function getLatestPrice(item) {
+  const middayDate = item.middayMarketDate ?? "";
+  const closeDate = item.closeMarketDate ?? "";
+
+  if (item.middayPrice != null && middayDate >= closeDate) {
+    return {
+      price: Number(item.middayPrice),
+      marketDate: middayDate,
+      dataSource: "MIDDAY",
+    };
+  }
+
+  if (item.closePrice != null) {
+    return {
+      price: Number(item.closePrice),
+      marketDate: closeDate || null,
+      dataSource: "CLOSE",
+    };
+  }
+
+  return { price: null, marketDate: null, dataSource: null };
 }
 
 function toStock(item) {
@@ -87,22 +143,54 @@ function toStock(item) {
     sector: "Other",
   };
 
-  const price = item.middayPrice ?? item.closePrice ?? null;
-  const marketDate = item.middayMarketDate ?? item.closeMarketDate ?? null;
+  const latest = getLatestPrice(item);
+  const signal = normalizeSignal(item);
 
   return {
     ticker: item.symbol,
     company: meta.company,
     sector: meta.sector,
-    price,
-    marketDate,
+    price: latest.price,
+    marketDate: latest.marketDate,
     updatedAt: item.updatedAt ?? null,
-    dataSource: item.middayPrice != null ? "MIDDAY" : "CLOSE",
-    // Real low-period signals will be populated by the historical backfill step.
-    signal: "Cached market price",
-    score: 0,
-    tone: "neutral",
+    dataSource: latest.dataSource,
+    signal,
+    signalSide:
+      item.signalSide ??
+      (signal.endsWith("LOW")
+        ? "LOW"
+        : signal.endsWith("HIGH")
+        ? "HIGH"
+        : "NORMAL"),
+    signalPeriod: item.signalPeriod ?? null,
+    rangeLow: item.rangeLow ?? null,
+    rangeHigh: item.rangeHigh ?? null,
+    signalThresholdPercent: item.signalThresholdPercent ?? 1,
+    signalCalculatedAt: item.signalCalculatedAt ?? null,
+    score: SIGNAL_SCORE[signal] ?? 0,
+    tone: getTone(signal),
     change: null,
+  };
+}
+
+function rankStocks(stocks) {
+  return [...stocks].sort((a, b) => {
+    const signalDifference = b.score - a.score;
+    if (signalDifference !== 0) return signalDifference;
+    return a.ticker.localeCompare(b.ticker);
+  });
+}
+
+function buildNewsletterSelection(rankedStocks) {
+  const selected = rankedStocks.slice(0, 10);
+
+  return {
+    maxStocks: 10,
+    stockCount: selected.length,
+    lowCount: selected.filter((s) => s.signalSide === "LOW").length,
+    normalCount: selected.filter((s) => s.signalSide === "NORMAL").length,
+    highCount: selected.filter((s) => s.signalSide === "HIGH").length,
+    stocks: selected,
   };
 }
 
@@ -121,7 +209,20 @@ export const handler = async (event) => {
     })
   );
 
-  const symbols = chooseSymbols(prefResult.Item);
+  const preferences = prefResult.Item ?? null;
+  const symbols = chooseSymbols(preferences);
+
+  if (!symbols.length) {
+    return response(200, {
+      personalized: true,
+      maxStocks: 10,
+      candidateCount: 0,
+      returnedCount: 0,
+      requestedSymbols: [],
+      stocks: [],
+      newsletter: buildNewsletterSelection([]),
+    });
+  }
 
   const result = await ddb.send(
     new BatchGetCommand({
@@ -137,15 +238,23 @@ export const handler = async (event) => {
   const records = result.Responses?.[signalsTable] ?? [];
   const bySymbol = new Map(records.map((item) => [item.symbol, item]));
 
-  const stocks = symbols
-    .map((symbol) => bySymbol.get(symbol))
-    .filter(Boolean)
-    .map(toStock);
+  const allRankedStocks = rankStocks(
+    symbols
+      .map((symbol) => bySymbol.get(symbol))
+      .filter(Boolean)
+      .map(toStock)
+  );
+
+  const stocks = allRankedStocks.slice(0, 10);
+  const newsletter = buildNewsletterSelection(allRankedStocks);
 
   return response(200, {
     personalized: true,
     maxStocks: 10,
+    candidateCount: symbols.length,
+    returnedCount: stocks.length,
     requestedSymbols: symbols,
     stocks,
+    newsletter,
   });
 };

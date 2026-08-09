@@ -16,6 +16,25 @@ export type UserPreferences = {
   updatedAt?: string;
 };
 
+export type NewsletterSelection = {
+  maxStocks: number;
+  stockCount: number;
+  lowCount: number;
+  normalCount: number;
+  highCount: number;
+  stocks: Stock[];
+};
+
+export type MarketResponse = {
+  personalized: boolean;
+  maxStocks: number;
+  candidateCount: number;
+  returnedCount: number;
+  requestedSymbols: string[];
+  stocks: Stock[];
+  newsletter: NewsletterSelection;
+};
+
 async function apiRequest<T>(
   user: User,
   path: string,
@@ -32,7 +51,9 @@ async function apiRequest<T>(
 
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(`${options.method ?? "GET"} ${path} failed: ${response.status} ${body}`);
+    throw new Error(
+      `${options.method ?? "GET"} ${path} failed: ${response.status} ${body}`
+    );
   }
 
   return response.json() as Promise<T>;
@@ -65,10 +86,5 @@ export async function savePreferences(
 }
 
 export async function getMarket(user: User) {
-  return apiRequest<{
-    personalized: boolean;
-    maxStocks: number;
-    requestedSymbols: string[];
-    stocks: Stock[];
-  }>(user, "/market");
+  return apiRequest<MarketResponse>(user, "/market");
 }
