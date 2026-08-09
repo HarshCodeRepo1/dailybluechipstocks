@@ -18,4 +18,13 @@ manifest_hash = ""
 packagetype = "Zip"
 functions = ["PreferencesFunction"]
 
+[function_build_definitions.8381fc29-9a67-499a-8d58-f43f7a9f2632]
+codeuri = "D:\\bluechipsStockDaily\\dailybluechipstocks-cognito\\backend\\src\\marketIngest"
+runtime = "nodejs22.x"
+architecture = "x86_64"
+handler = "index.handler"
+manifest_hash = ""
+packagetype = "Zip"
+functions = ["MarketIngestFunction"]
+
 [layer_build_definitions]
