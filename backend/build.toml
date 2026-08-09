@@ -27,4 +27,13 @@ manifest_hash = ""
 packagetype = "Zip"
 functions = ["MarketIngestFunction"]
 
+[function_build_definitions.ec723128-8071-474a-b986-4c47ceda93cf]
+codeuri = "D:\\bluechipsStockDaily\\dailybluechipstocks-cognito\\backend\\src\\marketView"
+runtime = "nodejs22.x"
+architecture = "x86_64"
+handler = "index.handler"
+manifest_hash = ""
+packagetype = "Zip"
+functions = ["MarketViewFunction"]
+
 [layer_build_definitions]

@@ -1,6 +1,13 @@
 import { ArrowRight, Sparkles } from 'lucide-react'
+import type { Stock } from '../types/market'
 
-export default function Hero() {
+function money(price: number | null) {
+  return price == null ? '—' : `$${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+export default function Hero({ stocks = [] }: { stocks?: Stock[] }) {
+  const stock = stocks[0]
+
   return (
     <section className="hero">
       <div className="hero-copy">
@@ -12,21 +19,30 @@ export default function Hero() {
           <a className="secondary-button" href="#watchlist">View blue-chip watchlist</a>
         </div>
       </div>
+
       <div className="hero-card">
         <div className="hero-card-top">
-          <span>Today's signal</span><span className="live-dot">LIVE</span>
+          <span>{stock ? 'Your cached market data' : "Today's signal"}</span>
+          <span className="live-dot">{stock ? 'CACHED' : 'SIGN IN'}</span>
         </div>
-        <div className="hero-stock">
-          <div className="stock-avatar">A</div>
-          <div><strong>Apple</strong><small>AAPL</small></div>
-          <div className="hero-price"><strong>$181.26</strong><small className="negative">-1.32%</small></div>
-        </div>
-        <div className="signal-card">
-          <small>PRICE SIGNAL</small>
-          <strong>Lowest in 4 months</strong>
-          <span className="score-pill">80/100</span>
-        </div>
-        <p className="plain-explainer"><strong>In plain English:</strong> Apple has recently become cheaper without a clear collapse in its core business.</p>
+
+        {stock ? (
+          <>
+            <div className="hero-stock">
+              <div className="stock-avatar">{stock.company[0]}</div>
+              <div><strong>{stock.company}</strong><small>{stock.ticker}</small></div>
+              <div className="hero-price"><strong>{money(stock.price)}</strong><small>{stock.marketDate ?? ''}</small></div>
+            </div>
+            <div className="signal-card">
+              <small>MARKET DATA</small>
+              <strong>{stock.signal}</strong>
+              <span className="score-pill">{stock.dataSource ?? 'AWS'}</span>
+            </div>
+            <p className="plain-explainer"><strong>Source:</strong> Marketstack data cached in AWS. Website refreshes do not call the market-data provider.</p>
+          </>
+        ) : (
+          <p className="plain-explainer"><strong>Sign in</strong> to see your selected stocks using the latest cached market data.</p>
+        )}
       </div>
     </section>
   )

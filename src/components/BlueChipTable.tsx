@@ -1,28 +1,33 @@
-import { stocks } from '../data/market'
+import type { Stock } from '../types/market'
 
-export default function BlueChipTable() {
+function money(price: number | null) {
+  return price == null ? '—' : `$${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+export default function BlueChipTable({ stocks = [] }: { stocks?: Stock[] }) {
   return (
     <section className="section" id="watchlist">
       <div className="section-heading">
         <div>
-          <span className="kicker">⭐ CORE WATCHLIST</span>
-          <h2>Top 10 Blue Chip Stocks</h2>
+          <span className="kicker">⭐ YOUR WATCHLIST</span>
+          <h2>{stocks.length ? 'Your cached blue-chip stocks' : 'Top Blue Chip Stocks'}</h2>
         </div>
-        <button className="text-button">View all →</button>
       </div>
 
       <div className="table-card">
         <div className="stock-table header-row">
-          <span>Company</span><span>Price</span><span>Change</span><span>Opportunity</span>
+          <span>Company</span><span>Price</span><span>Updated</span><span>Signal</span>
         </div>
-        {stocks.map((stock) => (
+        {stocks.length === 0 ? (
+          <div style={{ padding: 24 }}>Sign in and choose stocks to load real cached market data.</div>
+        ) : stocks.map((stock) => (
           <div className="stock-table" key={stock.ticker}>
             <div className="company-cell">
               <div className="mini-avatar">{stock.company[0]}</div>
               <div><strong>{stock.company}</strong><small>{stock.ticker}</small></div>
             </div>
-            <strong>${stock.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
-            <span className={stock.change >= 0 ? 'positive' : 'negative'}>{stock.change >= 0 ? '+' : ''}{stock.change.toFixed(2)}%</span>
+            <strong>{money(stock.price)}</strong>
+            <span>{stock.marketDate ?? '—'}</span>
             <span className={`signal-badge ${stock.tone}`}>{stock.signal}</span>
           </div>
         ))}

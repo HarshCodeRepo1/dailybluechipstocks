@@ -172,6 +172,34 @@ Resources:
             Path: /preferences
             Method: PUT
 
+
+  MarketViewFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs22.x
+      Architectures:
+        - x86_64
+      CodeUri: src/marketView/
+      Handler: index.handler
+      MemorySize: 128
+      Timeout: 5
+      Environment:
+        Variables:
+          MARKET_SIGNALS_TABLE: !Ref MarketSignalsTable
+          USER_PREFERENCES_TABLE: !Ref UserPreferencesTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref MarketSignalsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref UserPreferencesTable
+      Events:
+        GetMarket:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref DailyBlueChipApi
+            Path: /market
+            Method: GET
+
   MarketIngestFunction:
     Type: AWS::Serverless::Function
     Properties:

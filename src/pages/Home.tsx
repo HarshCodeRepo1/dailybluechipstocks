@@ -9,8 +9,9 @@ import OptionIdea from '../components/OptionIdea'
 import NewsletterCTA from '../components/NewsletterCTA'
 import Footer from '../components/Footer'
 import LoginModal from '../components/LoginModal'
+import type { Stock } from '../types/market'
 
-export default function Home() {
+export default function Home({ marketStocks = [] }: { marketStocks?: Stock[] }) {
   const [loginOpen, setLoginOpen] = useState(false)
 
   return (
@@ -18,10 +19,10 @@ export default function Home() {
       <div className="page-shell">
         <Header onLogin={() => setLoginOpen(true)} />
         <main>
-          <Hero />
+          <Hero stocks={marketStocks} />
           <MarketSummary />
-          <BlueChipTable />
-          <Opportunities />
+          <BlueChipTable stocks={marketStocks} />
+          <Opportunities stocks={marketStocks} />
           <InsightCards />
           <OptionIdea />
           <NewsletterCTA />

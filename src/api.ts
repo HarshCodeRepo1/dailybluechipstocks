@@ -1,4 +1,5 @@
 import type { User } from "oidc-client-ts";
+import type { Stock } from "./types/market";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_URL ??
@@ -61,4 +62,13 @@ export async function savePreferences(
     method: "PUT",
     body: JSON.stringify(preferences),
   });
+}
+
+export async function getMarket(user: User) {
+  return apiRequest<{
+    personalized: boolean;
+    maxStocks: number;
+    requestedSymbols: string[];
+    stocks: Stock[];
+  }>(user, "/market");
 }
