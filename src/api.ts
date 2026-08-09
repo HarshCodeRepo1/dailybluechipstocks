@@ -27,6 +27,7 @@ export type NewsletterSelection = {
 
 export type MarketResponse = {
   personalized: boolean;
+  defaultWatchlist?: boolean;
   maxStocks: number;
   candidateCount: number;
   returnedCount: number;
@@ -34,6 +35,21 @@ export type MarketResponse = {
   stocks: Stock[];
   newsletter: NewsletterSelection;
 };
+
+async function publicApiRequest<T>(path: string): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    headers: {
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`GET ${path} failed: ${response.status} ${body}`);
+  }
+
+  return response.json() as Promise<T>;
+}
 
 async function apiRequest<T>(
   user: User,
@@ -79,12 +95,34 @@ export async function savePreferences(
     "sectors" | "stocks" | "alertPeriods" | "newsletterEnabled"
   >
 ) {
+  // UI should stop at 10, but keep a backend-safe payload too.
+  const safePreferences = {
+    ...preferences,
+    stocks: [...new Set(preferences.stocks)].slice(0, 10),
+  };
+
   return apiRequest<UserPreferences>(user, "/preferences", {
     method: "PUT",
-    body: JSON.stringify(preferences),
+    body: JSON.stringify(safePreferences),
   });
 }
 
 export async function getMarket(user: User) {
   return apiRequest<MarketResponse>(user, "/market");
+}
+
+export async function getPublicMarket() {
+  return publicApiRequest<MarketResponse>("/market/public");
+}
+
+export async function previewAdminNewsletter(user: User) {
+  return apiRequest(user, "/admin/newsletter/preview", {
+    method: "POST",
+  });
+}
+
+export async function sendAdminTestNewsletter(user: User) {
+  return apiRequest(user, "/admin/newsletter/test", {
+    method: "POST",
+  });
 }

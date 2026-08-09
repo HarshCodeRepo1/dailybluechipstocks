@@ -41,4 +41,4 @@ backend/.aws-sam-*/
 backend/payload.json
 backend/response.json
 backend/response*.json
-backend/response-bootstrap.json
+backend/response-bootstrap.jsoncd ..

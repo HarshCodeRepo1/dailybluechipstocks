@@ -44,8 +44,16 @@ const STOCKS = {
 };
 
 const DEFAULT_SYMBOLS = [
-  "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN",
-  "META", "AVGO", "JPM", "V", "COST",
+  "AAPL",
+  "MSFT",
+  "NVDA",
+  "GOOGL",
+  "AMZN",
+  "META",
+  "AVGO",
+  "JPM",
+  "V",
+  "COST",
 ];
 
 const SIGNAL_SCORE = {
@@ -79,26 +87,19 @@ function getUserId(event) {
 }
 
 function chooseSymbols(preferences) {
-  if (!preferences) return DEFAULT_SYMBOLS;
-
-  const selectedStocks = Array.isArray(preferences.stocks)
+  const selected = Array.isArray(preferences?.stocks)
     ? preferences.stocks
         .map((symbol) => String(symbol).trim().toUpperCase())
-        .filter(Boolean)
+        .filter((symbol) => STOCKS[symbol])
     : [];
 
-  const selectedSectors = new Set(
-    Array.isArray(preferences.sectors) ? preferences.sectors : []
-  );
-
-  const sectorMatches = Object.entries(STOCKS)
-    .filter(([, meta]) => selectedSectors.has(meta.sector))
-    .map(([symbol]) => symbol);
-
-  const candidates = [...new Set([...selectedStocks, ...sectorMatches])]
-    .filter((symbol) => STOCKS[symbol]);
-
-  return candidates.length ? candidates : DEFAULT_SYMBOLS;
+  // Personal watchlist rule:
+  // - explicit selections only
+  // - never expand from sectors
+  // - hard maximum of 10
+  // - if no explicit selections, show the default 10 blue chips
+  const explicit = [...new Set(selected)].slice(0, 10);
+  return explicit.length ? explicit : DEFAULT_SYMBOLS;
 }
 
 function normalizeSignal(item) {
@@ -194,35 +195,8 @@ function buildNewsletterSelection(rankedStocks) {
   };
 }
 
-export const handler = async (event) => {
-  const userId = getUserId(event);
-
-  if (!userId) {
-    return response(401, { message: "Unauthorized" });
-  }
-
-  const prefResult = await ddb.send(
-    new GetCommand({
-      TableName: preferencesTable,
-      Key: { userId },
-      ConsistentRead: false,
-    })
-  );
-
-  const preferences = prefResult.Item ?? null;
-  const symbols = chooseSymbols(preferences);
-
-  if (!symbols.length) {
-    return response(200, {
-      personalized: true,
-      maxStocks: 10,
-      candidateCount: 0,
-      returnedCount: 0,
-      requestedSymbols: [],
-      stocks: [],
-      newsletter: buildNewsletterSelection([]),
-    });
-  }
+async function getSignals(symbols) {
+  if (!symbols.length) return [];
 
   const result = await ddb.send(
     new BatchGetCommand({
@@ -238,23 +212,59 @@ export const handler = async (event) => {
   const records = result.Responses?.[signalsTable] ?? [];
   const bySymbol = new Map(records.map((item) => [item.symbol, item]));
 
-  const allRankedStocks = rankStocks(
+  return rankStocks(
     symbols
       .map((symbol) => bySymbol.get(symbol))
       .filter(Boolean)
       .map(toStock)
+  ).slice(0, 10);
+}
+
+export const handler = async (event) => {
+  const userId = getUserId(event);
+  const isPublicRoute = event.routeKey === "GET /market/public";
+
+  // Public landing page always receives the 10 default blue chips.
+  if (isPublicRoute) {
+    const stocks = await getSignals(DEFAULT_SYMBOLS);
+
+    return response(200, {
+      personalized: false,
+      defaultWatchlist: true,
+      maxStocks: 10,
+      candidateCount: DEFAULT_SYMBOLS.length,
+      returnedCount: stocks.length,
+      requestedSymbols: DEFAULT_SYMBOLS,
+      stocks,
+      newsletter: buildNewsletterSelection(stocks),
+    });
+  }
+
+  if (!userId) {
+    return response(401, { message: "Unauthorized" });
+  }
+
+  const prefResult = await ddb.send(
+    new GetCommand({
+      TableName: preferencesTable,
+      Key: { userId },
+      ConsistentRead: false,
+    })
   );
 
-  const stocks = allRankedStocks.slice(0, 10);
-  const newsletter = buildNewsletterSelection(allRankedStocks);
+  const preferences = prefResult.Item ?? null;
+  const symbols = chooseSymbols(preferences);
+  const stocks = await getSignals(symbols);
 
   return response(200, {
     personalized: true,
+    defaultWatchlist:
+      !Array.isArray(preferences?.stocks) || preferences.stocks.length === 0,
     maxStocks: 10,
     candidateCount: symbols.length,
     returnedCount: stocks.length,
     requestedSymbols: symbols,
     stocks,
-    newsletter,
+    newsletter: buildNewsletterSelection(stocks),
   });
 };

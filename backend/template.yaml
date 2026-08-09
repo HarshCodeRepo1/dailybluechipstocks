@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: DailyBlueChipStocks backend with Cognito, preferences, and cached Marketstack ingestion.
+Description: DailyBlueChipStocks backend with Cognito, preferences, cached market data, and newsletters.
 
 Parameters:
   CognitoUserPoolId:
@@ -19,6 +19,10 @@ Parameters:
     Type: String
     Default: dailybluechipstocks/marketstack
 
+  NewsletterFromEmail:
+    Type: String
+    Default: newsletter@dailybluechipstocks.com
+
   MarketSymbols:
     Type: String
     Default: AAPL,MSFT,NVDA,GOOGL,AMZN,META,AVGO,ORCL,CRM,ADBE,LLY,JNJ,PFE,MRK,ABBV,XOM,CVX,COP,JPM,BAC,GS,V,MA,WMT,COST,HD,KO,PEP,CAT,GE
@@ -36,6 +40,7 @@ Resources:
         AllowMethods:
           - GET
           - PUT
+          - POST
           - OPTIONS
       Auth:
         DefaultAuthorizer: CognitoJwtAuthorizer
@@ -91,6 +96,22 @@ Resources:
         SSEEnabled: true
 
   MarketIngestionRunsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: runKey
+          AttributeType: S
+      KeySchema:
+        - AttributeName: runKey
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+      SSESpecification:
+        SSEEnabled: true
+
+  NewsletterRunsTable:
     Type: AWS::DynamoDB::Table
     Properties:
       BillingMode: PAY_PER_REQUEST
@@ -172,7 +193,6 @@ Resources:
             Path: /preferences
             Method: PUT
 
-
   MarketViewFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -199,7 +219,78 @@ Resources:
             ApiId: !Ref DailyBlueChipApi
             Path: /market
             Method: GET
+        GetPublicMarket:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref DailyBlueChipApi
+            Path: /market/public
+            Method: GET
+            Auth:
+              Authorizer: NONE
 
+  NewsletterFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs22.x
+      Architectures:
+        - x86_64
+      CodeUri: src/newsletter/
+      Handler: index.handler
+      MemorySize: 256
+      Timeout: 120
+      Environment:
+        Variables:
+          MARKET_SIGNALS_TABLE: !Ref MarketSignalsTable
+          USER_PREFERENCES_TABLE: !Ref UserPreferencesTable
+          NEWSLETTER_RUNS_TABLE: !Ref NewsletterRunsTable
+          USER_POOL_ID: !Ref CognitoUserPoolId
+          NEWSLETTER_FROM_EMAIL: !Ref NewsletterFromEmail
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref MarketSignalsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref UserPreferencesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref NewsletterRunsTable
+        - Statement:
+            Effect: Allow
+            Action:
+              - cognito-idp:ListUsers
+            Resource: !Sub arn:${AWS::Partition}:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${CognitoUserPoolId}
+        - Statement:
+            Effect: Allow
+            Action:
+              - ses:SendEmail
+            Resource: "*"
+      Events:
+        AdminNewsletterPreview:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref DailyBlueChipApi
+            Path: /admin/newsletter/preview
+            Method: POST
+        AdminNewsletterTest:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref DailyBlueChipApi
+            Path: /admin/newsletter/test
+            Method: POST
+
+        # Production code is deployed, but the schedule is intentionally OFF.
+        # Enable this only after SES/domain verification and test-email approval.
+        ProductionNewsletter:
+          Type: ScheduleV2
+          Properties:
+            Description: Daily production newsletter after the close.
+            ScheduleExpression: cron(30 18 ? * MON-FRI *)
+            ScheduleExpressionTimezone: America/New_York
+            State: DISABLED
+            FlexibleTimeWindow:
+              Mode: "OFF"
+            RetryPolicy:
+              MaximumRetryAttempts: 0
+              MaximumEventAgeInSeconds: 300
+            Input: '{"mode":"PRODUCTION"}'
 
   HistoryBootstrapFunction:
     Type: AWS::Serverless::Function
@@ -297,7 +388,7 @@ Resources:
 
 Outputs:
   ApiUrl:
-    Description: Base URL for the protected DailyBlueChipStocks API.
+    Description: Base URL for the DailyBlueChipStocks API.
     Value: !Sub https://${DailyBlueChipApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}
 
   UserPreferencesTableName:
@@ -315,3 +406,7 @@ Outputs:
   MarketRawBucketName:
     Description: Private S3 bucket containing raw Marketstack snapshots.
     Value: !Ref MarketRawBucket
+
+  NewsletterRunsTableName:
+    Description: Idempotency records for production newsletter sends.
+    Value: !Ref NewsletterRunsTable

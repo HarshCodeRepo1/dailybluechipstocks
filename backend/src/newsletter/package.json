@@ -1,10 +1,11 @@
 {
-  "name": "dailybluechipstocks-market-view",
+  "name": "dailybluechipstocks-newsletter",
   "version": "1.0.0",
-  "private": true,
   "type": "module",
   "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.0.0",
     "@aws-sdk/client-dynamodb": "^3.0.0",
+    "@aws-sdk/client-sesv2": "^3.0.0",
     "@aws-sdk/lib-dynamodb": "^3.0.0"
   }
 }
